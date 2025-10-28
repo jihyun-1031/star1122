@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>별똥별 잡기 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 도트 스타일을 위한 폰트 설정 (픽셀 아트를 위한 기본 폰트) */
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        /* 기본 설정 및 픽셀 아트 스타일 적용 */
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #0d1a2c; /* 깊은 밤하늘색 */
+            color: #e0f2fe; /* 밝은 텍스트 색상 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden; /* 별이 화면 밖으로 나가도록 설정 */
+            user-select: none; /* 드래그 방지 */
+        }
+
+        .game-container {
+            width: 90%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1.2;
+            background-color: #1a273b; /* 게임 영역 배경 */
+            border: 8px solid #3c4f74;
+            box-shadow: 12px 12px 0 0 #070d14; /* 도트 스타일 그림자 */
+            position: relative;
+            padding: 20px;
+            border-radius: 4px; /* 최소한의 둥근 모서리 */
+        }
+
+        .pixel-button {
+            background-color: #4b8aed;
+            color: #0d1a2c;
+            padding: 8px 16px;
+            font-size: 1.5rem;
+            border: 4px solid #1a273b;
+            box-shadow: 4px 4px 0 0 #284c80;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .pixel-button:hover {
+            box-shadow: 2px 2px 0 0 #284c80;
+            transform: translate(2px, 2px);
+        }
+
+        .pixel-button:active {
+            box-shadow: 0 0 0 0 transparent;
+            transform: translate(4px, 4px);
+        }
+
+        /* 별똥별 스타일 (픽셀 모양) */
+        .star {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            /* 픽셀 모양을 위한 박스 쉐도우 트릭 */
+            background: transparent;
+            box-shadow: 0 0 0 #ffeb3b,
+                        0 4px 0 #ffeb3b,
+                        4px 0 0 #ffeb3b,
+                        4px 4px 0 #ffeb3b; /* 2x2 픽셀 블록으로 별 모양 흉내 */
+            border-radius: 0; /* 둥근 모서리 제거 */
+            cursor: pointer;
+            z-index: 10;
+            opacity: 1;
+            transform: rotate(45deg); /* 마름모 형태 */
+        }
+
+        /* 별똥별 떨어지는 애니메이션 */
+        @keyframes fall {
+            from { top: -20px; opacity: 0.8; }
+            to { top: 100%; opacity: 0; }
+        }
+
+        .falling {
+            animation: fall var(--fall-time) linear forwards;
+        }
+
+        /* 소원 메시지 스타일 */
+        #wish-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            color: #ff9800;
+            text-shadow: 4px 4px #000;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .active-message {
+            opacity: 1 !important;
+        }
+
+        /* 게임 오버 모달 */
+        #game-over-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(13, 26, 44, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #game-over-modal.show {
+            pointer-events: all;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background-color: #1a273b;
+            padding: 30px;
+            border: 8px solid #3c4f74;
+            box-shadow: 12px 12px 0 0 #070d14;
+            text-align: center;
+            font-size: 1.2rem;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="flex flex-col items-center justify-center p-4">
+    <h1 class="text-4xl mb-6 text-[#ffeb3b] text-shadow-lg" style="text-shadow: 4px 4px 0 #070d14;">
+        별똥별 잡기 게임
+    </h1>
+
+    <div class="game-container relative">
+        <!-- 상태 표시줄 -->
+        <div class="flex justify-between text-2xl mb-4">
+            <div id="score-display">점수: 0</div>
+            <div id="time-display">시간: 20초</div>
+        </div>
+
+        <!-- 게임 시작/종료 메시지 -->
+        <div id="start-screen" class="absolute inset-0 bg-[#1a273b] flex flex-col justify-center items-center z-40">
+            <button id="start-button" class="pixel-button">
+                게임 시작!
+            </button>
+            <p class="mt-4 text-xl">떨어지는 별을 클릭하여 소원을 빌어요!</p>
+        </div>
+
+        <!-- 소원 메시지 오버레이 -->
+        <div id="wish-message">소원을 빌어요!</div>
+
+        <!-- 게임 오버 모달 -->
+        <div id="game-over-modal">
+            <div class="modal-content">
+                <p class="text-4xl text-red-400 mb-4" style="text-shadow: 2px 2px 0 #000;">게임 종료!</p>
+                <p class="text-3xl mb-6">최종 점수: <span id="final-score" class="text-[#ffeb3b]">0</span></p>
+                <button id="restart-button" class="pixel-button">
+                    다시 시작
+                </button>
+            </div>
+        </div>
+        
+        <!-- 별이 떨어지는 게임 영역 -->
+        <div id="game-area" class="w-full h-full relative overflow-hidden">
+            <!-- 별똥별들이 여기에 생성됩니다. -->
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // 전역 변수 설정
+    let score = 0;
+    let timeLeft = 20;
+    let gameInterval; // 1초 타이머
+    let starSpawnInterval; // 별 생성 타이머
+    let isGameRunning = false;
+
+    // DOM 요소 캐싱
+    const scoreDisplay = document.getElementById('score-display');
+    const timeDisplay = document.getElementById('time-display');
+    const startScreen = document.getElementById('start-screen');
+    const startButton = document.getElementById('start-button');
+    const gameOverModal = document.getElementById('game-over-modal');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const restartButton = document.getElementById('restart-button');
+    const gameArea = document.getElementById('game-area');
+    const wishMessage = document.getElementById('wish-message');
+
+    // ===============================
+    // 헬퍼 함수
+    // ===============================
+
+    // 점수 업데이트
+    function updateScore(points = 1) {
+        score += points;
+        scoreDisplay.textContent = `점수: ${score}`;
+    }
+
+    // 시간 업데이트
+    function updateTimeDisplay() {
+        timeDisplay.textContent = `시간: ${timeLeft}초`;
+    }
+
+    // 소원 빌기 메시지 표시
+    function showWishMessage() {
+        wishMessage.classList.add('active-message');
+        // 텍스트를 잠시 표시한 후 숨김
+        setTimeout(() => {
+            wishMessage.classList.remove('active-message');
+        }, 500);
+    }
+
+    // ===============================
+    // 별똥별 로직
+    // ===============================
+
+    // 별똥별 클릭 핸들러
+    function handleStarClick(event) {
+        if (!isGameRunning) return;
+
+        const star = event.currentTarget;
+        
+        // 1. 점수 증가 및 메시지 표시
+        updateScore(1);
+        showWishMessage();
+
+        // 2. 별똥별 제거
+        star.removeEventListener('click', handleStarClick);
+        star.remove();
+    }
+
+    // 별똥별 생성
+    function spawnStar() {
+        if (!isGameRunning) return;
+
+        const star = document.createElement('div');
+        star.classList.add('star', 'falling');
+        
+        // 랜덤한 가로 위치 (0% ~ 95% 사이)
+        const randomX = Math.random() * 90; 
+        star.style.left = `${randomX}%`;
+
+        // 별이 떨어지는 시간 (랜덤하게 설정하여 다양성 추가)
+        const fallTime = 3 + Math.random() * 2; // 3초 ~ 5초 사이
+        star.style.setProperty('--fall-time', `${fallTime}s`);
+
+        // 별똥별에 클릭 이벤트 리스너 추가
+        star.addEventListener('click', handleStarClick);
+
+        // 게임 영역에 추가
+        gameArea.appendChild(star);
+
+        // 애니메이션이 끝나면 자동으로 제거 (잡지 못했을 경우)
+        star.addEventListener('animationend', () => {
+            star.removeEventListener('click', handleStarClick);
+            star.remove();
+        });
+    }
+
+    // ===============================
+    // 게임 관리 로직
+    // ===============================
+
+    // 타이머 시작
+    function startTimer() {
+        gameInterval = setInterval(() => {
+            timeLeft--;
+            updateTimeDisplay();
+
+            if (timeLeft <= 0) {
+                endGame();
+            }
+        }, 1000);
+    }
+
+    // 별똥별 생성 시작
+    function startStarSpawning() {
+        // 처음에는 좀 더 빠르게 생성
+        spawnStar(); 
+        spawnStar(); 
+
+        // 0.5초 ~ 1.5초 간격으로 별 생성
+        starSpawnInterval = setInterval(() => {
+            spawnStar();
+        }, 500 + Math.random() * 1000);
+    }
+
+    // 게임 초기화 및 시작
+    function startGame() {
+        // 상태 초기화
+        score = 0;
+        timeLeft = 20;
+        isGameRunning = true;
+        
+        // 화면 업데이트
+        updateScore(0);
+        updateTimeDisplay();
+
+        // 기존 인터벌 및 별똥별 제거
+        clearInterval(gameInterval);
+        clearInterval(starSpawnInterval);
+        document.querySelectorAll('.star').forEach(star => star.remove());
+        
+        // 시작 화면 숨기기, 게임 오버 모달 숨기기
+        startScreen.style.display = 'none';
+        gameOverModal.classList.remove('show');
+
+        // 타이머 및 별똥별 생성 시작
+        startTimer();
+        startStarSpawning();
+    }
+
+    // 게임 종료
+    function endGame() {
+        if (!isGameRunning) return;
+        
+        isGameRunning = false;
+        
+        // 모든 타이머 정지
+        clearInterval(gameInterval);
+        clearInterval(starSpawnInterval);
+        
+        // 남은 별똥별의 클릭 이벤트 제거 (실수 클릭 방지)
+        document.querySelectorAll('.star').forEach(star => {
+            star.removeEventListener('click', handleStarClick);
+        });
+
+        // 게임 오버 화면 표시
+        finalScoreDisplay.textContent = score;
+        gameOverModal.classList.add('show');
+    }
+
+    // ===============================
+    // 이벤트 리스너
+    // ===============================
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+
+    // 초기 상태 설정
+    window.onload = () => {
+        // 페이지 로드 시, 점수와 시간을 한 번 표시합니다.
+        updateScore(0);
+        updateTimeDisplay(); 
+        startScreen.style.display = 'flex'; // 시작 화면을 보여줍니다.
+    }
+</script>
+
+</body>
+</html>
